@@ -1,0 +1,18 @@
+name = "vids-downloader"
+main = "src/worker/index.ts"
+compatibility_date = "2024-01-01"
+
+# Replace with your Cloudflare account ID
+# account_id = "your-account-id-here"
+
+[build]
+command = "npm run build:worker"
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"
+
+# Production environment variables (if needed)
+[vars]
+ENVIRONMENT = "production"
