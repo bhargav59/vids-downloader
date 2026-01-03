@@ -13,22 +13,16 @@ local_protocol = "http"
 ENVIRONMENT = "production"
 
 # ============================================
-# CLOUDFLARE FREE SERVICES
+# CLOUDFLARE FREE SERVICES ONLY
 # ============================================
 
-# KV Namespace - Video metadata caching
+# KV Namespace - Video metadata caching (1GB free)
 [[kv_namespaces]]
 binding = "VIDEO_CACHE"
 id = "a795084c95cd4151962e05b9ae3470ac"
 
-# D1 Database - Analytics and error logging
+# D1 Database - Analytics and error logging (5GB free)
 [[d1_databases]]
 binding = "ANALYTICS_DB"
 database_name = "vids-analytics"
 database_id = "4850862f-f0ef-44ed-8900-a7e449862395"
-
-# R2 Bucket - Video file storage (Enable R2 in Cloudflare Dashboard first)
-# Then run: wrangler r2 bucket create vids-downloader-storage
-# [[r2_buckets]]
-# binding = "VIDEO_STORAGE"
-# bucket_name = "vids-downloader-storage"

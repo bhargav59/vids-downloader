@@ -1,11 +1,10 @@
 /**
  * VidsDoldr - Cloudflare Worker Entry Point
  * 
- * Leverages Cloudflare Free Services:
+ * Cloudflare Free Services Used:
  * - KV: Cache video metadata (1GB free)
- * - R2: Store videos temporarily (10GB free)
  * - D1: Analytics database (5GB free)
- * - Cache API: Edge caching for responses
+ * - Cache API: Edge caching for HTML
  */
 
 import { extractVideo } from './extractors';
@@ -41,8 +40,9 @@ function getCacheKey(url: string): string {
  */
 async function getFromCache(env: Env, url: string): Promise<VideoInfo | null> {
     try {
+        if (!env.VIDEO_CACHE) return null;
         const key = getCacheKey(url);
-        const cached = await env.VIDEO_CACHE?.get(key, 'json') as CacheEntry | null;
+        const cached = await env.VIDEO_CACHE.get(key, 'json') as CacheEntry | null;
 
         if (cached && cached.expiresAt > Date.now()) {
             return cached.videoInfo;
@@ -58,13 +58,14 @@ async function getFromCache(env: Env, url: string): Promise<VideoInfo | null> {
  */
 async function saveToCache(env: Env, url: string, videoInfo: VideoInfo): Promise<void> {
     try {
+        if (!env.VIDEO_CACHE) return;
         const key = getCacheKey(url);
         const entry: CacheEntry = {
             videoInfo,
             timestamp: Date.now(),
             expiresAt: Date.now() + (CACHE_TTL * 1000),
         };
-        await env.VIDEO_CACHE?.put(key, JSON.stringify(entry), { expirationTtl: CACHE_TTL });
+        await env.VIDEO_CACHE.put(key, JSON.stringify(entry), { expirationTtl: CACHE_TTL });
     } catch (e) {
         console.error('Cache write error:', e);
     }
@@ -75,8 +76,10 @@ async function saveToCache(env: Env, url: string, videoInfo: VideoInfo): Promise
  */
 async function logDownload(env: Env, request: Request, videoInfo: VideoInfo, quality: string): Promise<void> {
     try {
+        if (!env.ANALYTICS_DB) return;
+
         const cf = request.cf;
-        await env.ANALYTICS_DB?.prepare(`
+        await env.ANALYTICS_DB.prepare(`
             INSERT INTO downloads (video_url, platform, quality, video_title, user_agent, country)
             VALUES (?, ?, ?, ?, ?, ?)
         `).bind(
@@ -90,7 +93,7 @@ async function logDownload(env: Env, request: Request, videoInfo: VideoInfo, qua
 
         // Update popular videos
         const videoId = getCacheKey(videoInfo.originalUrl);
-        await env.ANALYTICS_DB?.prepare(`
+        await env.ANALYTICS_DB.prepare(`
             INSERT INTO popular_videos (video_id, platform, title, thumbnail, download_count, last_downloaded)
             VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
             ON CONFLICT(video_id) DO UPDATE SET
@@ -107,7 +110,8 @@ async function logDownload(env: Env, request: Request, videoInfo: VideoInfo, qua
  */
 async function logError(env: Env, url: string, error: Error): Promise<void> {
     try {
-        await env.ANALYTICS_DB?.prepare(`
+        if (!env.ANALYTICS_DB) return;
+        await env.ANALYTICS_DB.prepare(`
             INSERT INTO error_logs (url, error_message, stack_trace)
             VALUES (?, ?, ?)
         `).bind(url, error.message, error.stack || '').run();
@@ -117,7 +121,7 @@ async function logError(env: Env, url: string, error: Error): Promise<void> {
 }
 
 /**
- * Handle /api/resolve - Extract video information with caching
+ * Handle /api/resolve - Extract video information with KV caching
  */
 async function handleResolve(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -146,7 +150,7 @@ async function handleResolve(request: Request, env: Env): Promise<Response> {
 }
 
 /**
- * Handle /api/proxy - Download video with R2 caching and analytics
+ * Handle /api/proxy - Stream video download with analytics
  */
 async function handleProxy(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -159,19 +163,6 @@ async function handleProxy(request: Request, env: Env): Promise<Response> {
     }
 
     try {
-        // Check R2 cache for this video
-        const r2Key = `videos/${getCacheKey(videoUrl)}.mp4`;
-        const cached = await env.VIDEO_STORAGE?.get(r2Key);
-
-        if (cached) {
-            // Serve from R2 cache
-            const headers = new Headers();
-            headers.set('Content-Type', 'video/mp4');
-            headers.set('Content-Disposition', `attachment; filename="${filename}"`);
-            headers.set('X-Cache', 'HIT');
-            return new Response(cached.body, { headers });
-        }
-
         // Fetch from source
         const response = await fetch(videoUrl, {
             headers: {
@@ -184,7 +175,7 @@ async function handleProxy(request: Request, env: Env): Promise<Response> {
             throw new Error(`Failed to fetch video: ${response.status}`);
         }
 
-        // Get video info for analytics (from cache)
+        // Log download analytics
         const videoInfo = await getFromCache(env, videoUrl);
         if (videoInfo) {
             await logDownload(env, request, videoInfo, quality);
@@ -194,28 +185,7 @@ async function handleProxy(request: Request, env: Env): Promise<Response> {
         const headers = new Headers();
         headers.set('Content-Type', response.headers.get('Content-Type') || 'video/mp4');
         headers.set('Content-Disposition', `attachment; filename="${filename}"`);
-        headers.set('X-Cache', 'MISS');
         headers.set('Access-Control-Allow-Origin', '*');
-
-        // Cache small videos to R2 (< 100MB)
-        const contentLength = parseInt(response.headers.get('Content-Length') || '0');
-        if (contentLength > 0 && contentLength < 100 * 1024 * 1024 && env.VIDEO_STORAGE) {
-            // Clone response to cache
-            const [stream1, stream2] = response.body!.tee();
-
-            // Background cache to R2
-            (async () => {
-                try {
-                    await env.VIDEO_STORAGE.put(r2Key, stream2, {
-                        httpMetadata: { contentType: 'video/mp4' },
-                    });
-                } catch (e) {
-                    console.error('R2 cache error:', e);
-                }
-            })();
-
-            return new Response(stream1, { headers });
-        }
 
         return new Response(response.body, { headers });
     } catch (error) {
@@ -229,18 +199,22 @@ async function handleProxy(request: Request, env: Env): Promise<Response> {
  */
 async function handleStats(env: Env): Promise<Response> {
     try {
-        const totalDownloads = await env.ANALYTICS_DB?.prepare(
+        if (!env.ANALYTICS_DB) {
+            return jsonResponse({ success: true, data: { totalDownloads: 0, platformStats: [], popularVideos: [] } });
+        }
+
+        const totalDownloads = await env.ANALYTICS_DB.prepare(
             'SELECT COUNT(*) as count FROM downloads'
         ).first<{ count: number }>();
 
-        const platformStats = await env.ANALYTICS_DB?.prepare(`
+        const platformStats = await env.ANALYTICS_DB.prepare(`
             SELECT platform, COUNT(*) as count 
             FROM downloads 
             GROUP BY platform 
             ORDER BY count DESC
         `).all();
 
-        const popularVideos = await env.ANALYTICS_DB?.prepare(`
+        const popularVideos = await env.ANALYTICS_DB.prepare(`
             SELECT title, platform, download_count 
             FROM popular_videos 
             ORDER BY download_count DESC 
@@ -273,7 +247,7 @@ export default {
             return new Response(null, { headers: CORS_HEADERS });
         }
 
-        // Use Cache API for HTML
+        // Use Cache API for HTML (edge caching)
         if (path === '/' || path === '') {
             const cache = caches.default;
             const cacheKey = new Request(url.toString(), request);

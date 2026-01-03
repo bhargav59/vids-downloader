@@ -34,18 +34,15 @@ export interface ApiResponse<T> {
 }
 
 /**
- * Cloudflare environment bindings
+ * Cloudflare environment bindings (Free tier only)
  */
 export interface Env {
     ENVIRONMENT: string;
 
-    // KV Namespace for caching
+    // KV Namespace - Video metadata caching (1GB free)
     VIDEO_CACHE: KVNamespace;
 
-    // R2 Bucket for video storage
-    VIDEO_STORAGE: R2Bucket;
-
-    // D1 Database for analytics
+    // D1 Database - Analytics and error logging (5GB free)
     ANALYTICS_DB: D1Database;
 }
 
@@ -56,16 +53,4 @@ export interface CacheEntry {
     videoInfo: VideoInfo;
     timestamp: number;
     expiresAt: number;
-}
-
-/**
- * Analytics record
- */
-export interface DownloadRecord {
-    video_url: string;
-    platform: string;
-    quality: string;
-    video_title: string;
-    user_agent: string;
-    country: string;
 }
