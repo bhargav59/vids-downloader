@@ -292,12 +292,16 @@ export const getHtml = () => `<!DOCTYPE html>
         
         function downloadFormat(formatUrl, quality) {
             const decodedUrl = decodeURIComponent(formatUrl);
-            // YouTube URLs are IP-restricted, open directly in browser
-            // Other platforms can use the proxy
-            if (decodedUrl.includes('googlevideo.com') || decodedUrl.includes('youtube.com')) {
+            // External download services or direct video URLs open in new tab
+            if (decodedUrl.includes('y2mate.com') || 
+                decodedUrl.includes('ssyoutube.com') || 
+                decodedUrl.includes('10downloader.com') ||
+                decodedUrl.includes('googlevideo.com') || 
+                decodedUrl.includes('youtube.com')) {
                 window.open(decodedUrl, '_blank');
             } else {
-                const filename = document.getElementById('title').textContent.replace(/[^a-z0-9]/gi, '_') + '_' + quality + '.mp4';
+                // Use proxy for direct video URLs (Instagram, TikTok)
+                const filename = document.getElementById('title').textContent.replace(/[^a-z0-9\\u0900-\\u097F]/gi, '_') + '_' + quality + '.mp4';
                 window.location.href = '/api/proxy?url=' + encodeURIComponent(decodedUrl) + '&filename=' + encodeURIComponent(filename);
             }
         }
