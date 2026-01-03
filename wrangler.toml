@@ -2,7 +2,7 @@ name = "vids-downloader"
 main = "src/worker/index.ts"
 compatibility_date = "2024-01-01"
 
-# Replace with your Cloudflare account ID
+# Replace with your Cloudflare account ID (optional for first deploy)
 # account_id = "your-account-id-here"
 
 [build]
@@ -13,6 +13,53 @@ command = "npm run build:worker"
 port = 8787
 local_protocol = "http"
 
-# Production environment variables (if needed)
+# Environment variables
 [vars]
 ENVIRONMENT = "production"
+
+# ============================================
+# CLOUDFLARE FREE SERVICES CONFIGURATION
+# ============================================
+
+# KV Namespace - Used for:
+# - Caching video metadata
+# - Storing browser cookies for Instagram/TikTok
+# - Rate limiting
+[[kv_namespaces]]
+binding = "VIDEO_CACHE"
+id = "your-kv-namespace-id"           # Replace after: wrangler kv:namespace create VIDEO_CACHE
+preview_id = "your-preview-kv-id"      # Replace after: wrangler kv:namespace create VIDEO_CACHE --preview
+
+# R2 Bucket - Used for:
+# - Caching downloaded videos (avoids re-downloading)
+# - Storing thumbnails
+# - Large file storage (up to 5GB)
+[[r2_buckets]]
+binding = "VIDEO_STORAGE"
+bucket_name = "vids-downloader-storage"
+
+# D1 Database - Used for:
+# - Analytics (download counts, popular videos)
+# - Usage tracking
+# - Error logging
+[[d1_databases]]
+binding = "ANALYTICS_DB"
+database_name = "vids-analytics"
+database_id = "your-d1-database-id"   # Replace after: wrangler d1 create vids-analytics
+
+# ============================================
+# SETUP COMMANDS (Run these before deploying)
+# ============================================
+# 
+# 1. Create KV namespace:
+#    wrangler kv:namespace create VIDEO_CACHE
+#    wrangler kv:namespace create VIDEO_CACHE --preview
+#
+# 2. Create R2 bucket:
+#    wrangler r2 bucket create vids-downloader-storage
+#
+# 3. Create D1 database:
+#    wrangler d1 create vids-analytics
+#    wrangler d1 execute vids-analytics --file=./schema.sql
+#
+# ============================================

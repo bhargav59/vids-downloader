@@ -32,3 +32,40 @@ export interface ApiResponse<T> {
     data?: T;
     error?: string;
 }
+
+/**
+ * Cloudflare environment bindings
+ */
+export interface Env {
+    ENVIRONMENT: string;
+
+    // KV Namespace for caching
+    VIDEO_CACHE: KVNamespace;
+
+    // R2 Bucket for video storage
+    VIDEO_STORAGE: R2Bucket;
+
+    // D1 Database for analytics
+    ANALYTICS_DB: D1Database;
+}
+
+/**
+ * Cache entry structure
+ */
+export interface CacheEntry {
+    videoInfo: VideoInfo;
+    timestamp: number;
+    expiresAt: number;
+}
+
+/**
+ * Analytics record
+ */
+export interface DownloadRecord {
+    video_url: string;
+    platform: string;
+    quality: string;
+    video_title: string;
+    user_agent: string;
+    country: string;
+}
