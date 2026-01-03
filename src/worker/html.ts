@@ -291,9 +291,15 @@ export const getHtml = () => `<!DOCTYPE html>
         }
         
         function downloadFormat(formatUrl, quality) {
-            const url = urlInput.value.trim();
-            const filename = document.getElementById('title').textContent.replace(/[^a-z0-9]/gi, '_') + '_' + quality + '.mp4';
-            window.location.href = '/api/proxy?url=' + encodeURIComponent(decodeURIComponent(formatUrl)) + '&filename=' + encodeURIComponent(filename);
+            const decodedUrl = decodeURIComponent(formatUrl);
+            // YouTube URLs are IP-restricted, open directly in browser
+            // Other platforms can use the proxy
+            if (decodedUrl.includes('googlevideo.com') || decodedUrl.includes('youtube.com')) {
+                window.open(decodedUrl, '_blank');
+            } else {
+                const filename = document.getElementById('title').textContent.replace(/[^a-z0-9]/gi, '_') + '_' + quality + '.mp4';
+                window.location.href = '/api/proxy?url=' + encodeURIComponent(decodedUrl) + '&filename=' + encodeURIComponent(filename);
+            }
         }
         
         function showError(msg) {
