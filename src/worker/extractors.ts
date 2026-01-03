@@ -18,8 +18,16 @@ const formatSize = (bytes: number | undefined): string => {
     return (bytes / 1024 / 1024).toFixed(2) + ' MB';
 };
 
+// List of Invidious instances to try
+const INVIDIOUS_INSTANCES = [
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+    'https://invidious.jing.rocks',
+    'https://yt.artemislena.eu',
+];
+
 /**
- * Extract YouTube video information using ytdl-core compatible fetch
+ * Extract YouTube video using Invidious API (handles signature deciphering)
  */
 export async function extractYouTube(url: string): Promise<VideoInfo> {
     // Get video ID from URL - supports watch, shorts, embed, and youtu.be
@@ -29,91 +37,100 @@ export async function extractYouTube(url: string): Promise<VideoInfo> {
     }
     const videoId = videoIdMatch[1];
 
-    // Fetch video page to get initial player response
-    const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
+    // Try Invidious instances
+    let lastError: Error | null = null;
+
+    for (const instance of INVIDIOUS_INSTANCES) {
+        try {
+            const response = await fetch(`${instance}/api/v1/videos/${videoId}`, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch from ${instance}`);
+            }
+
+            const data = await response.json() as any;
+
+            if (!data || data.error) {
+                throw new Error(data?.error || 'No video data');
+            }
+
+            // Process formats from Invidious
+            const formats: VideoFormat[] = [];
+            const seenQualities = new Set<string>();
+
+            // Combined formats (video + audio)
+            for (const f of (data.formatStreams || [])) {
+                const quality = f.resolution || f.qualityLabel || 'Unknown';
+                if (seenQualities.has(quality)) continue;
+                seenQualities.add(quality);
+
+                formats.push({
+                    quality,
+                    format: f.container || 'mp4',
+                    url: f.url,
+                    size: formatSize(parseInt(f.size) || 0),
+                    hasAudio: true,
+                    hasVideo: true,
+                    isAdaptive: false
+                });
+            }
+
+            // Adaptive formats (video only or audio only)
+            for (const f of (data.adaptiveFormats || [])) {
+                const hasVideo = f.type?.includes('video');
+                const hasAudio = f.type?.includes('audio');
+                const quality = hasVideo ? (f.resolution || f.qualityLabel || 'Unknown') : 'Audio';
+
+                const key = `${quality}-${hasAudio ? 'a' : 'v'}`;
+                if (seenQualities.has(key)) continue;
+                seenQualities.add(key);
+
+                formats.push({
+                    quality,
+                    format: f.container || (hasVideo ? 'mp4' : 'm4a'),
+                    url: f.url,
+                    size: formatSize(parseInt(f.contentLength) || 0),
+                    hasAudio: !!hasAudio,
+                    hasVideo: !!hasVideo,
+                    isAdaptive: hasVideo && !hasAudio
+                });
+            }
+
+            // Sort by quality (combined first, then by resolution)
+            formats.sort((a, b) => {
+                if (a.hasVideo && a.hasAudio && (!b.hasVideo || !b.hasAudio)) return -1;
+                if ((!a.hasVideo || !a.hasAudio) && b.hasVideo && b.hasAudio) return 1;
+                const resA = parseInt(a.quality) || 0;
+                const resB = parseInt(b.quality) || 0;
+                return resB - resA;
+            });
+
+            return {
+                platform: 'YouTube',
+                title: data.title || 'Untitled Video',
+                thumbnail: data.videoThumbnails?.[0]?.url || '',
+                duration: formatDuration(data.lengthSeconds || 0),
+                author: data.author || 'Unknown',
+                formats,
+                originalUrl: url
+            };
+        } catch (e) {
+            lastError = e instanceof Error ? e : new Error('Unknown error');
+            continue; // Try next instance
         }
-    });
-
-    const html = await response.text();
-
-    // Extract player response JSON
-    const playerResponseMatch = html.match(/var ytInitialPlayerResponse\s*=\s*({.+?});/);
-    if (!playerResponseMatch) {
-        throw new Error('Could not extract video data from YouTube');
     }
 
-    let playerResponse;
-    try {
-        playerResponse = JSON.parse(playerResponseMatch[1]);
-    } catch {
-        throw new Error('Failed to parse YouTube video data');
-    }
-
-    const videoDetails = playerResponse.videoDetails;
-    const streamingData = playerResponse.streamingData;
-
-    if (!videoDetails || !streamingData) {
-        throw new Error('Video is unavailable or private');
-    }
-
-    // Process formats
-    const formats: VideoFormat[] = [];
-    const allFormats = [...(streamingData.formats || []), ...(streamingData.adaptiveFormats || [])];
-
-    const seenQualities = new Set<string>();
-
-    for (const f of allFormats) {
-        if (!f.url) continue; // Skip formats that require signature deciphering
-
-        const hasVideo = f.mimeType?.includes('video');
-        const hasAudio = f.mimeType?.includes('audio') || (hasVideo && f.audioQuality);
-        const height = f.height || 0;
-        const quality = height > 0 ? `${height}p` : (f.audioQuality || 'Unknown');
-        const format = f.mimeType?.split(';')[0]?.split('/')[1] || 'mp4';
-
-        const key = `${quality}-${hasAudio ? 'av' : 'v'}`;
-        if (seenQualities.has(key)) continue;
-        seenQualities.add(key);
-
-        formats.push({
-            quality,
-            format,
-            url: f.url,
-            size: formatSize(parseInt(f.contentLength) || 0),
-            hasAudio: !!hasAudio,
-            hasVideo: !!hasVideo,
-            isAdaptive: !hasAudio && hasVideo
-        });
-    }
-
-    // Sort by quality (video first, then by resolution)
-    formats.sort((a, b) => {
-        if (a.hasVideo && !b.hasVideo) return -1;
-        if (!a.hasVideo && b.hasVideo) return 1;
-        const resA = parseInt(a.quality) || 0;
-        const resB = parseInt(b.quality) || 0;
-        return resB - resA;
-    });
-
-    return {
-        platform: 'YouTube',
-        title: videoDetails.title || 'Untitled Video',
-        thumbnail: videoDetails.thumbnail?.thumbnails?.slice(-1)[0]?.url || '',
-        duration: formatDuration(parseInt(videoDetails.lengthSeconds) || 0),
-        author: videoDetails.author || 'Unknown',
-        formats,
-        originalUrl: url
-    };
+    throw lastError || new Error('All Invidious instances failed. YouTube may be blocking requests.');
 }
 
 /**
  * Extract Instagram video (web scraping approach)
  */
 export async function extractInstagram(url: string): Promise<VideoInfo> {
-    // Extract shortcode from URL
     const shortcodeMatch = url.match(/instagram\.com\/(?:reel|p|tv)\/([A-Za-z0-9_-]+)/);
     if (!shortcodeMatch) {
         throw new Error('Invalid Instagram URL');
@@ -121,7 +138,6 @@ export async function extractInstagram(url: string): Promise<VideoInfo> {
 
     const shortcode = shortcodeMatch[1];
 
-    // Try to fetch the page
     const response = await fetch(`https://www.instagram.com/p/${shortcode}/embed/`, {
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -130,7 +146,6 @@ export async function extractInstagram(url: string): Promise<VideoInfo> {
 
     const html = await response.text();
 
-    // Try to extract video URL from embed page
     const videoMatch = html.match(/"video_url":"([^"]+)"/);
     const thumbnailMatch = html.match(/"thumbnail_src":"([^"]+)"/);
     const captionMatch = html.match(/"caption":"([^"]+)"/);
@@ -166,7 +181,6 @@ export async function extractInstagram(url: string): Promise<VideoInfo> {
  * Extract TikTok video
  */
 export async function extractTikTok(url: string): Promise<VideoInfo> {
-    // Fetch TikTok page
     const response = await fetch(url, {
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -176,7 +190,6 @@ export async function extractTikTok(url: string): Promise<VideoInfo> {
 
     const html = await response.text();
 
-    // Extract JSON data from script tag
     const scriptMatch = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([^<]+)<\/script>/);
 
     if (!scriptMatch) {
