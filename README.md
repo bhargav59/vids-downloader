@@ -1,36 +1,146 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VidsDoldr - Universal Video Downloader
 
-## Getting Started
+A video downloader supporting YouTube, Instagram, and TikTok. Available as both a **local Next.js app** (full features) and a **Cloudflare Workers deployment** (limited features).
 
-First, run the development server:
+![Video Downloader](https://img.shields.io/badge/Video-Downloader-blue)
+![Next.js](https://img.shields.io/badge/Next.js-16.1-black)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange)
+
+## 🚀 Live Demo
+
+**Cloudflare Workers:** https://vids-downloader.bhargavsah2026.workers.dev
+
+> ⚠️ YouTube downloads work best with the local version due to signature restrictions.
+
+---
+
+## 📦 Features
+
+| Platform | Local (Next.js) | Cloudflare Workers |
+|----------|-----------------|-------------------|
+| YouTube | ✅ Full support (yt-dlp) | ⚠️ Redirects to external services |
+| Instagram | ✅ Works | ✅ Works |
+| TikTok | ✅ Works | ✅ Works |
+| Multi-language titles | ✅ Hindi, etc. | ✅ Hindi, etc. |
+
+---
+
+## 🏠 Local Development (Recommended)
+
+### Prerequisites
+- Node.js 18+
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) installed (`brew install yt-dlp`)
+- [instaloader](https://instaloader.github.io/) (optional, for Instagram)
+
+### Installation
+
+```bash
+git clone https://github.com/bhargav59/vids-downloader.git
+cd vids-downloader
+npm install
+```
+
+### Run Locally
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## ☁️ Cloudflare Workers Deployment
 
-## Learn More
+### Prerequisites
+- Cloudflare account
+- Wrangler CLI (`npm install -g wrangler`)
 
-To learn more about Next.js, take a look at the following resources:
+### Deploy
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+# Login to Cloudflare
+wrangler login
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Deploy
+npm run deploy
+```
 
-## Deploy on Vercel
+### Cloudflare Services Used (Free Tier)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Service | Usage | Free Limit |
+|---------|-------|------------|
+| KV | Video metadata caching | 1GB |
+| D1 | Download analytics | 5GB |
+| Cache API | Edge caching | Unlimited |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## 📁 Project Structure
+
+```
+VidsDoldr/
+├── src/
+│   ├── app/                    # Next.js pages
+│   │   ├── api/
+│   │   │   ├── proxy/          # Video download proxy
+│   │   │   └── resolve/        # Video info extraction
+│   │   └── download/           # Download page
+│   ├── components/             # React components
+│   ├── lib/
+│   │   └── extractors/         # Platform extractors (Next.js)
+│   └── worker/                 # Cloudflare Worker files
+│       ├── index.ts            # Worker entry point
+│       ├── extractors.ts       # Platform extractors (Workers)
+│       └── html.ts             # Embedded frontend
+├── wrangler.toml               # Cloudflare config
+├── schema.sql                  # D1 database schema
+└── package.json
+```
+
+---
+
+## 🛠️ Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Next.js locally |
+| `npm run dev:worker` | Test Worker locally (port 8787) |
+| `npm run deploy` | Deploy to Cloudflare Workers |
+| `npm run build` | Build Next.js for production |
+
+---
+
+## 📝 API Endpoints
+
+### `GET /api/resolve?url=<video_url>`
+Extract video information and available formats.
+
+### `GET /api/proxy?url=<video_url>&filename=<name>`
+Download video file.
+
+### `GET /api/stats` (Workers only)
+Get download statistics.
+
+---
+
+## ⚠️ Known Limitations
+
+1. **YouTube on Workers**: Due to signature deciphering requirements, YouTube downloads redirect to external services (y2mate, ssyoutube).
+2. **Instagram**: May require login for private posts.
+3. **TikTok**: May be blocked in some regions.
+
+---
+
+## 📄 License
+
+MIT
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit changes
+4. Push and create a Pull Request
