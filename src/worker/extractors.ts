@@ -22,8 +22,8 @@ const formatSize = (bytes: number | undefined): string => {
  * Extract YouTube video information using ytdl-core compatible fetch
  */
 export async function extractYouTube(url: string): Promise<VideoInfo> {
-    // Get video ID from URL
-    const videoIdMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+    // Get video ID from URL - supports watch, shorts, embed, and youtu.be
+    const videoIdMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
     if (!videoIdMatch) {
         throw new Error('Invalid YouTube URL');
     }
