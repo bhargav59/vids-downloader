@@ -18,113 +18,23 @@ const formatSize = (bytes: number | undefined): string => {
     return (bytes / 1024 / 1024).toFixed(2) + ' MB';
 };
 
-// List of Invidious instances to try
-const INVIDIOUS_INSTANCES = [
-    'https://inv.nadeko.net',
-    'https://invidious.nerdvpn.de',
-    'https://invidious.jing.rocks',
-    'https://yt.artemislena.eu',
-];
-
 /**
- * Extract YouTube video using Invidious API (handles signature deciphering)
+ * Extract YouTube video - Workers limitation notice
+ * YouTube downloads require signature deciphering which isn't possible in Cloudflare Workers.
+ * Use the local Next.js version (npm run dev) for YouTube downloads.
  */
 export async function extractYouTube(url: string): Promise<VideoInfo> {
-    // Get video ID from URL - supports watch, shorts, embed, and youtu.be
+    // Get video ID from URL
     const videoIdMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
     if (!videoIdMatch) {
         throw new Error('Invalid YouTube URL');
     }
-    const videoId = videoIdMatch[1];
 
-    // Try Invidious instances
-    let lastError: Error | null = null;
-
-    for (const instance of INVIDIOUS_INSTANCES) {
-        try {
-            const response = await fetch(`${instance}/api/v1/videos/${videoId}`, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch from ${instance}`);
-            }
-
-            const data = await response.json() as any;
-
-            if (!data || data.error) {
-                throw new Error(data?.error || 'No video data');
-            }
-
-            // Process formats from Invidious
-            const formats: VideoFormat[] = [];
-            const seenQualities = new Set<string>();
-
-            // Combined formats (video + audio)
-            for (const f of (data.formatStreams || [])) {
-                const quality = f.resolution || f.qualityLabel || 'Unknown';
-                if (seenQualities.has(quality)) continue;
-                seenQualities.add(quality);
-
-                formats.push({
-                    quality,
-                    format: f.container || 'mp4',
-                    url: f.url,
-                    size: formatSize(parseInt(f.size) || 0),
-                    hasAudio: true,
-                    hasVideo: true,
-                    isAdaptive: false
-                });
-            }
-
-            // Adaptive formats (video only or audio only)
-            for (const f of (data.adaptiveFormats || [])) {
-                const hasVideo = f.type?.includes('video');
-                const hasAudio = f.type?.includes('audio');
-                const quality = hasVideo ? (f.resolution || f.qualityLabel || 'Unknown') : 'Audio';
-
-                const key = `${quality}-${hasAudio ? 'a' : 'v'}`;
-                if (seenQualities.has(key)) continue;
-                seenQualities.add(key);
-
-                formats.push({
-                    quality,
-                    format: f.container || (hasVideo ? 'mp4' : 'm4a'),
-                    url: f.url,
-                    size: formatSize(parseInt(f.contentLength) || 0),
-                    hasAudio: !!hasAudio,
-                    hasVideo: !!hasVideo,
-                    isAdaptive: hasVideo && !hasAudio
-                });
-            }
-
-            // Sort by quality (combined first, then by resolution)
-            formats.sort((a, b) => {
-                if (a.hasVideo && a.hasAudio && (!b.hasVideo || !b.hasAudio)) return -1;
-                if ((!a.hasVideo || !a.hasAudio) && b.hasVideo && b.hasAudio) return 1;
-                const resA = parseInt(a.quality) || 0;
-                const resB = parseInt(b.quality) || 0;
-                return resB - resA;
-            });
-
-            return {
-                platform: 'YouTube',
-                title: data.title || 'Untitled Video',
-                thumbnail: data.videoThumbnails?.[0]?.url || '',
-                duration: formatDuration(data.lengthSeconds || 0),
-                author: data.author || 'Unknown',
-                formats,
-                originalUrl: url
-            };
-        } catch (e) {
-            lastError = e instanceof Error ? e : new Error('Unknown error');
-            continue; // Try next instance
-        }
-    }
-
-    throw lastError || new Error('All Invidious instances failed. YouTube may be blocking requests.');
+    throw new Error(
+        '⚠️ YouTube downloads require the local version. ' +
+        'Run "npm run dev" locally and use http://localhost:3000 for YouTube. ' +
+        'This cloud version supports Instagram and TikTok only.'
+    );
 }
 
 /**
@@ -256,5 +166,5 @@ export async function extractVideo(url: string): Promise<VideoInfo> {
         return extractTikTok(cleanUrl);
     }
 
-    throw new Error('Unsupported platform. Currently supporting: YouTube, Instagram, TikTok');
+    throw new Error('Unsupported platform. Currently supporting: YouTube (local only), Instagram, TikTok');
 }
