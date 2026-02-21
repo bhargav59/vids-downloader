@@ -1,9 +1,7 @@
 name = "vids-downloader"
 main = "src/worker/index.ts"
-compatibility_date = "2024-01-01"
-
-[build]
-command = "npm run build:worker"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
 
 [dev]
 port = 8787
@@ -13,15 +11,15 @@ local_protocol = "http"
 ENVIRONMENT = "production"
 
 # ============================================
-# CLOUDFLARE FREE SERVICES ONLY
+# CLOUDFLARE FREE SERVICES
 # ============================================
 
-# KV Namespace - Video metadata caching (1GB free)
+# KV Namespace — Video metadata caching (1GB free tier)
 [[kv_namespaces]]
 binding = "VIDEO_CACHE"
 id = "a795084c95cd4151962e05b9ae3470ac"
 
-# D1 Database - Analytics and error logging (5GB free)
+# D1 Database — Analytics and error logging (5GB free tier)
 [[d1_databases]]
 binding = "ANALYTICS_DB"
 database_name = "vids-analytics"
