@@ -772,6 +772,136 @@ export async function extractTwitter(url: string): Promise<VideoInfo> {
 }
 
 // ---------------------------------------------------------------------------
+// XVideos
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract XVideos videos.
+ * XVideos uses straight-forward HTML variables for player initialization.
+ */
+export async function extractXVideos(url: string): Promise<VideoInfo> {
+    const resp = await fetch(url.replace('http:', 'https:'), {
+        headers: {
+            ...browserHeaders,
+            Referer: 'https://www.xvideos.com/',
+        },
+    });
+
+    if (!resp.ok) {
+        throw new Error('XVideos service is unavailable or URL is invalid.');
+    }
+
+    const html = await resp.text();
+
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].replace(' - XVIDEOS.COM', '').trim() : 'XVideos Video';
+
+    const thumbMatch = html.match(/setThumbUrl\('([^']+)'\)/) || html.match(/setThumbUrl169\('([^']+)'\)/);
+    const thumbnail = thumbMatch ? thumbMatch[1] : '';
+
+    const highMatch = html.match(/setVideoUrlHigh\('([^']+)'\)/);
+    const lowMatch = html.match(/setVideoUrlLow\('([^']+)'\)/);
+
+    const formats: VideoFormat[] = [];
+
+    if (highMatch?.[1]) {
+        formats.push({
+            quality: 'High Resolution',
+            format: 'mp4',
+            url: highMatch[1],
+            size: 'Unknown',
+            hasAudio: true,
+            hasVideo: true,
+            isAdaptive: false,
+        });
+    }
+
+    if (lowMatch?.[1]) {
+        formats.push({
+            quality: 'Low Resolution',
+            format: 'mp4',
+            url: lowMatch[1],
+            size: 'Unknown',
+            hasAudio: true,
+            hasVideo: true,
+            isAdaptive: false,
+        });
+    }
+
+    if (formats.length === 0) {
+        throw new Error('Could not extract XVideos video. The video may be deleted, private, or regional.');
+    }
+
+    return {
+        platform: 'XVideos',
+        title,
+        thumbnail,
+        duration: '0:00',
+        author: 'XVideos Network',
+        formats,
+        originalUrl: url,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Pornhub
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract Pornhub videos.
+ * Pornhub uses heavy Cloudflare anti-bot and complex video URL obfuscation.
+ * Best approach is falling back to trusted external downloaders that bypass these.
+ */
+export async function extractPornhub(url: string): Promise<VideoInfo> {
+    let title = 'Pornhub Video';
+    let thumbnail = '';
+
+    // Best-effort attempt to get basic metadata via scraping (may hit Cloudflare 403)
+    try {
+        const resp = await fetch(url, { headers: browserHeaders });
+        if (resp.ok) {
+            const html = await resp.text();
+            const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+            if (titleMatch) title = titleMatch[1].replace(' - Pornhub.com', '').trim();
+
+            const thumbMatch = html.match(/poster="([^"]+)"/) || html.match(/image_url":"([^"]+)"/);
+            if (thumbMatch) thumbnail = thumbMatch[1].replace(/\\/g, '');
+        }
+    } catch { /* Suppress errors, continue to fallbacks */ }
+
+    return {
+        platform: 'Pornhub',
+        title,
+        thumbnail,
+        duration: '0:00',
+        author: 'Pornhub User',
+        formats: [
+            {
+                quality: '↗ Download on TubeOffline',
+                format: 'mp4',
+                url: `https://www.tubeoffline.com/download-PornHub-videos.php?video=${encodeURIComponent(url)}`,
+                size: 'External Service',
+                hasAudio: true,
+                hasVideo: true,
+                isAdaptive: false,
+                isExternal: true,
+            } as VideoFormat & { isExternal: boolean },
+            {
+                quality: '↗ Download on PasteDownload',
+                format: 'mp4',
+                url: `https://pastedownload.com/pornhub-video-downloader/?url=${encodeURIComponent(url)}`,
+                size: 'External Service',
+                hasAudio: true,
+                hasVideo: true,
+                isAdaptive: false,
+                isExternal: true,
+            } as VideoFormat & { isExternal: boolean },
+        ],
+        originalUrl: url,
+    };
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -808,9 +938,15 @@ export async function extractVideo(url: string, instagramCookie?: string): Promi
     if (lower.includes('twitter.com') || lower.includes('x.com')) {
         return extractTwitter(cleanUrl);
     }
+    if (lower.includes('xvideos.com') || lower.includes('xvideos2.com')) {
+        return extractXVideos(cleanUrl);
+    }
+    if (lower.includes('pornhub.com')) {
+        return extractPornhub(cleanUrl);
+    }
 
     throw new Error(
-        'Unsupported platform. Supported: YouTube, TikTok, Instagram, Facebook, Twitter/X.\n' +
+        'Unsupported platform. Supported: YouTube, TikTok, Instagram, Facebook, Twitter/X, XVideos, Pornhub.\n' +
         'Make sure you paste the full video URL.'
     );
 }
