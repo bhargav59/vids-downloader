@@ -2,6 +2,7 @@ name = "vids-downloader"
 main = "src/worker/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
+account_id = "55d69052aaf72922968d7cd5e3005d2b"
 
 [dev]
 port = 8787
