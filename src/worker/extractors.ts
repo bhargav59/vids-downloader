@@ -220,28 +220,34 @@ export async function extractYouTube(url: string): Promise<VideoInfo> {
         } catch { /* skip */ }
     }
 
-    // --- Last resort: redirect to a real YouTube download page ---
+    // --- Last resort: Native Iframe Download Widgets ---
     if (formats.length === 0) {
+        // We use isExternal: false but pass a specially formatted widget URL.
+        // The frontend (extract.tsx) can check for these and render them in an iframe
+        // or a modal so the user never leaves Vids-Downloader.
         formats.push({
-            quality: 'Best Quality (MP4)',
+            quality: 'Download MP4 (Widget)',
             format: 'mp4',
-            url: `https://ssyoutube.com/watch?v=${videoId}`,
-            size: 'Variable',
+            url: `https://loader.to/api/button/?url=https://www.youtube.com/watch?v=${videoId}&f=1080&color=d8b4fe`,
+            size: 'HD / Variable',
             hasAudio: true,
             hasVideo: true,
             isAdaptive: false,
-            isExternal: true,
-        } as VideoFormat & { isExternal: boolean });
+            isExternal: false, // Tell frontend to embed this, not redirect
+            isWidget: true,
+        } as VideoFormat & { isWidget?: boolean });
+
         formats.push({
-            quality: 'MP3 Audio',
+            quality: 'Download MP3 (Widget)',
             format: 'mp3',
-            url: `https://ytmp3.nu/api/widget/?url=https://www.youtube.com/watch?v=${videoId}`,
-            size: 'Variable',
+            url: `https://loader.to/api/button/?url=https://www.youtube.com/watch?v=${videoId}&f=mp3&color=d8b4fe`,
+            size: 'Audio',
             hasAudio: true,
             hasVideo: false,
             isAdaptive: false,
-            isExternal: true,
-        } as VideoFormat & { isExternal: boolean });
+            isExternal: false, // Tell frontend to embed this, not redirect
+            isWidget: true,
+        } as VideoFormat & { isWidget?: boolean });
     }
 
     return {

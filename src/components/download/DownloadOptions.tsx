@@ -8,9 +8,14 @@ import { useRouter } from 'next/navigation';
 export default function DownloadOptions({ data }: { data: VideoInfo }) {
     const [newUrl, setNewUrl] = useState('');
     const [loading, setLoading] = useState(false);
+    const [activeWidget, setActiveWidget] = useState<string | null>(null);
     const router = useRouter();
 
     const handleDownload = (format: VideoFormat) => {
+        if (format.isWidget && format.url) {
+            setActiveWidget(format.url);
+            return;
+        }
         // Preserve Unicode letters (Hindi, Chinese, etc), only remove unsafe filesystem chars
         const safeTitle = data.title
             .replace(/[<>:"/\\|?*]/g, '') // Remove filesystem-unsafe characters
@@ -98,6 +103,37 @@ export default function DownloadOptions({ data }: { data: VideoInfo }) {
                 {/* Right: Download Options */}
                 <div>
                     <h1 className="text-h2">Download Options</h1>
+
+                    {/* Widget Iframe Modal overlay if activeWidget is set */}
+                    {activeWidget && (
+                        <div style={{
+                            position: 'fixed',
+                            top: 0, left: 0, right: 0, bottom: 0,
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            backdropFilter: 'blur(4px)',
+                            zIndex: 9999,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '2rem'
+                        }}>
+                            <div style={{ width: '100%', maxWidth: '600px', background: 'var(--color-surface)', borderRadius: 'var(--radius-md)', overflow: 'hidden', position: 'relative' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                    <h3 style={{ margin: 0, color: 'var(--color-text)' }}>Native Download Proxy</h3>
+                                    <button onClick={() => setActiveWidget(null)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1 }}>&times;</button>
+                                </div>
+                                <iframe
+                                    src={activeWidget}
+                                    style={{ width: '100%', height: '100px', border: 'none', background: 'transparent' }}
+                                    title="Download Proxy"
+                                />
+                                <div style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', opacity: 0.6, textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}>
+                                    Click the button in the frame above to instantly save the file to your device.
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="flex-col" style={{ gap: '1rem' }}>
                         {data.formats.map((format, idx) => (

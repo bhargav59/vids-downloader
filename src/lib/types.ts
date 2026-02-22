@@ -6,6 +6,8 @@ export interface VideoFormat {
     hasAudio: boolean;
     hasVideo: boolean;
     isAdaptive?: boolean; // True if it requires merging (audio+video)
+    isExternal?: boolean;
+    isWidget?: boolean; // True if we should render an iframe overlay
 }
 
 export interface VideoInfo {
