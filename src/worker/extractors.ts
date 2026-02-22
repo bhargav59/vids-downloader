@@ -210,7 +210,7 @@ export async function extractYouTube(url: string): Promise<VideoInfo> {
 
             if (cobaltResp.ok) {
                 const cobaltData = await cobaltResp.json() as { status?: string; url?: string; urls?: string[] };
-                if (cobaltData.status === 'redirect' || cobaltData.status === 'stream') {
+                if (cobaltData.status === 'redirect') {
                     const dlUrl = cobaltData.url || (cobaltData.urls && cobaltData.urls[0]);
                     if (dlUrl) {
                         formats.push({ quality: '1080p', format: 'mp4', url: dlUrl, size: 'HD', hasAudio: true, hasVideo: true, isAdaptive: false });
