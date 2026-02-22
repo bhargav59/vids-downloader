@@ -124,7 +124,7 @@ export default function DownloadOptions({ data }: { data: VideoInfo }) {
                                     <button onClick={() => setActiveWidget(null)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1 }}>&times;</button>
                                 </div>
                                 <iframe
-                                    src={activeWidget}
+                                    src={`/api/widget?url=${encodeURIComponent(activeWidget)}`}
                                     style={{ width: '100%', height: '100px', border: 'none', background: 'transparent' }}
                                     title="Download Proxy"
                                 />

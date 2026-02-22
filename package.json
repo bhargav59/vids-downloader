@@ -15,5 +15,8 @@
     "eslint": "^9",
     "typescript": "^5",
     "wrangler": "^3.99.0"
+  },
+  "dependencies": {
+    "ytdl-core": "^4.11.5"
   }
 }

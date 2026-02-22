@@ -275,6 +275,46 @@ async function handleProxy(request: Request, env: Env): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// Route: /api/widget (Proxy HTML without X-Frame-Options)
+// ---------------------------------------------------------------------------
+
+async function handleWidget(request: Request, env: Env): Promise<Response> {
+    const { searchParams } = new URL(request.url);
+    const widgetUrl = searchParams.get('url');
+
+    if (!widgetUrl || !widgetUrl.startsWith('https://loader.to/')) {
+        return new Response('Invalid widget URL', { status: 400 });
+    }
+
+    try {
+        const upstream = await fetch(widgetUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://loader.to/'
+            },
+        });
+
+        // Strip security headers that block iframes
+        const responseHeaders = new Headers(upstream.headers);
+        responseHeaders.delete('x-frame-options');
+        responseHeaders.delete('content-security-policy');
+
+        let body = await upstream.text();
+
+        // Rewrite asset paths in loader.to HTML to be absolute
+        body = body.replace(/href="\//g, 'href="https://loader.to/');
+        body = body.replace(/src="\//g, 'src="https://loader.to/');
+
+        return new Response(body, {
+            status: upstream.status,
+            headers: responseHeaders
+        });
+    } catch (e) {
+        return new Response('Failed to load widget', { status: 502 });
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Route: /api/stats
 // ---------------------------------------------------------------------------
 
@@ -329,6 +369,7 @@ export default {
         // API routes
         if (path === '/api/resolve') return handleResolve(request, env);
         if (path === '/api/proxy') return handleProxy(request, env);
+        if (path === '/api/widget') return handleWidget(request, env);
         if (path === '/api/stats') return handleStats(env);
 
         // HTML SPA — serve for all known pages (client-side tabs handle the rest)
