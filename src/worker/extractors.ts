@@ -278,6 +278,34 @@ export async function extractYouTube(url: string): Promise<VideoInfo> {
         }
     }
 
+    // --- Ultimate Fail-Safe: Clean External Redirect (No Ads) ---
+    // If the Cloudflare Worker Datacenter IP or local user DNS completely blocks the internal proxy fetches,
+    // we provide a clean, ad-free link directly to the open-source cobalt.tools frontend instead of failing
+    // or using malicious iframe proxies like loader.to.
+    if (formats.length === 0) {
+        formats.push({
+            quality: 'Download HD via Cobalt (Ad-Free Secure Bypass)',
+            format: 'mp4',
+            url: `https://cobalt.tools/?u=https://www.youtube.com/watch?v=${videoId}`,
+            size: 'HD',
+            hasAudio: true,
+            hasVideo: true,
+            isAdaptive: false,
+            isExternal: true, // Frontend will open this cleanly in a new tab without iframes
+        });
+
+        formats.push({
+            quality: 'Download MP3 Audio (Ad-Free Secure Bypass)',
+            format: 'mp3',
+            url: `https://cobalt.tools/?u=https://www.youtube.com/watch?v=${videoId}`,
+            size: 'Audio',
+            hasAudio: true,
+            hasVideo: false,
+            isAdaptive: false,
+            isExternal: true,
+        });
+    }
+
     return {
         platform: 'YouTube',
         title: meta.title || 'YouTube Video',
