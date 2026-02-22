@@ -87,13 +87,13 @@ export async function extractYouTube(url: string): Promise<VideoInfo> {
     const formats: VideoFormat[] = [];
 
     try {
-        const innertubeResp = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+        const innertubeResp = await fetch('https://www.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
-                'Origin': 'https://www.youtube.com',
-                'Referer': 'https://www.youtube.com/',
+                'X-YouTube-Client-Name': '3',
+                'X-YouTube-Client-Version': '19.09.37',
             },
             body: JSON.stringify({
                 context: {
