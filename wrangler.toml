@@ -2,7 +2,7 @@ name = "vids-downloader"
 main = "src/worker/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
-account_id = "55d69052aaf72922968d7cd5e3005d2b"
+account_id = "c8ee2d165f87ea31e6f691341ac9ef0c"
 
 [dev]
 port = 8787
@@ -18,10 +18,10 @@ ENVIRONMENT = "production"
 # KV Namespace — Video metadata caching (1GB free tier)
 [[kv_namespaces]]
 binding = "VIDEO_CACHE"
-id = "a795084c95cd4151962e05b9ae3470ac"
+id = "21852bac8e444331959f3fef7c3e0db1"
 
 # D1 Database — Analytics and error logging (5GB free tier)
 [[d1_databases]]
 binding = "ANALYTICS_DB"
 database_name = "vids-analytics"
-database_id = "4850862f-f0ef-44ed-8900-a7e449862395"
+database_id = "1bb7c26d-dc75-4619-8863-531a1ea8b095"
