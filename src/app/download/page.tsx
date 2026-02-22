@@ -3,6 +3,9 @@ import DownloadOptions from '@/components/download/DownloadOptions';
 import Link from 'next/link';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
 export default async function DownloadPage(props: {
     searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {

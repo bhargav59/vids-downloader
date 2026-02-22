@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { extractVideoInfo } from '@/lib/extractors';
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 export async function GET(request: NextRequest) {
     try {
