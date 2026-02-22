@@ -225,27 +225,37 @@ export async function extractYouTube(url: string): Promise<VideoInfo> {
         // We use isExternal: false but pass a specially formatted widget URL.
         // The frontend (extract.tsx) can check for these and render them in an iframe
         // or a modal so the user never leaves Vids-Downloader.
-        formats.push({
-            quality: 'Download MP4 (Widget)',
-            format: 'mp4',
-            url: `https://loader.to/api/button/?url=https://www.youtube.com/watch?v=${videoId}&f=1080&color=d8b4fe`,
-            size: 'HD / Variable',
-            hasAudio: true,
-            hasVideo: true,
-            isAdaptive: false,
-            isExternal: false, // Tell frontend to embed this, not redirect
-            isWidget: true,
-        } as VideoFormat & { isWidget?: boolean });
+
+        const widgetQualities = [
+            { label: '1080p', f: '1080' },
+            { label: '720p', f: '720' },
+            { label: '480p', f: '480' },
+            { label: '360p', f: '360' }
+        ];
+
+        widgetQualities.forEach(q => {
+            formats.push({
+                quality: `Download MP4 ${q.label}`,
+                format: 'mp4',
+                url: `https://loader.to/api/button/?url=https://www.youtube.com/watch?v=${videoId}&f=${q.f}&color=d8b4fe`,
+                size: 'Variable',
+                hasAudio: true,
+                hasVideo: true,
+                isAdaptive: false,
+                isExternal: false,
+                isWidget: true,
+            } as VideoFormat & { isWidget?: boolean });
+        });
 
         formats.push({
-            quality: 'Download MP3 (Widget)',
+            quality: 'Download MP3 Audio',
             format: 'mp3',
             url: `https://loader.to/api/button/?url=https://www.youtube.com/watch?v=${videoId}&f=mp3&color=d8b4fe`,
             size: 'Audio',
             hasAudio: true,
             hasVideo: false,
             isAdaptive: false,
-            isExternal: false, // Tell frontend to embed this, not redirect
+            isExternal: false,
             isWidget: true,
         } as VideoFormat & { isWidget?: boolean });
     }
