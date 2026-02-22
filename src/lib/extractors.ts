@@ -191,73 +191,91 @@ export async function extractYouTube(url: string): Promise<VideoInfo> {
         // yt1s failed — fall through to cobalt fallback below
     }
 
-    // --- Fallback: cobalt.tools API ---
+    // --- Fallback: Community Cobalt Instances (Ad-Free Direct MP4s) ---
     if (formats.length === 0) {
-        try {
-            const cobaltResp = await fetch('https://api.cobalt.tools/', {
-                method: 'POST',
-                headers: {
-                    ...browserHeaders,
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json',
-                },
-                body: JSON.stringify({
-                    url: `https://www.youtube.com/watch?v=${videoId}`,
-                    vQuality: '1080',
-                    filenameStyle: 'pretty',
-                }),
-            });
-
-            if (cobaltResp.ok) {
-                const cobaltData = await cobaltResp.json() as { status?: string; url?: string; urls?: string[] };
-                if (cobaltData.status === 'redirect') {
-                    const dlUrl = cobaltData.url || (cobaltData.urls && cobaltData.urls[0]);
-                    if (dlUrl) {
-                        formats.push({ quality: '1080p', format: 'mp4', url: dlUrl, size: 'HD', hasAudio: true, hasVideo: true, isAdaptive: false });
-                    }
-                }
-            }
-        } catch { /* skip */ }
-    }
-
-    // --- Last resort: Native Iframe Download Widgets ---
-    if (formats.length === 0) {
-        // We use isExternal: false but pass a specially formatted widget URL.
-        // The frontend (extract.tsx) can check for these and render them in an iframe
-        // or a modal so the user never leaves Vids-Downloader.
-
-        const widgetQualities = [
-            { label: '1080p', f: '1080' },
-            { label: '720p', f: '720' },
-            { label: '480p', f: '480' },
-            { label: '360p', f: '360' }
+        const cobaltInstances = [
+            'https://co.wuk.sh',
+            'https://cobalt.owo.vc',
+            'https://cobalt.tux.pizza',
+            'https://cobalt1.kwiatekm.org',
+            'https://api.cobalt.tools',
+            'https://cobalt.cues.sg',
+            'https://cobalt.canine.ly'
         ];
 
-        widgetQualities.forEach(q => {
-            formats.push({
-                quality: `Download MP4 ${q.label}`,
-                format: 'mp4',
-                url: `https://loader.to/api/button/?url=https://www.youtube.com/watch?v=${videoId}&f=${q.f}&color=d8b4fe`,
-                size: 'Variable',
-                hasAudio: true,
-                hasVideo: true,
-                isAdaptive: false,
-                isExternal: false,
-                isWidget: true,
-            } as VideoFormat & { isWidget?: boolean });
-        });
+        // Find the first working instance (test with 720p)
+        let workingInstance = '';
+        for (const instance of cobaltInstances) {
+            try {
+                // v7 API spec requires root endpoint and videoQuality
+                const testResp = await fetch(`${instance}/`, {
+                    method: 'POST',
+                    headers: {
+                        ...browserHeaders,
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                    },
+                    body: JSON.stringify({
+                        url: `https://www.youtube.com/watch?v=${videoId}`,
+                        videoQuality: '720',
+                        filenamePattern: 'pretty'
+                    }),
+                });
 
-        formats.push({
-            quality: 'Download MP3 Audio',
-            format: 'mp3',
-            url: `https://loader.to/api/button/?url=https://www.youtube.com/watch?v=${videoId}&f=mp3&color=d8b4fe`,
-            size: 'Audio',
-            hasAudio: true,
-            hasVideo: false,
-            isAdaptive: false,
-            isExternal: false,
-            isWidget: true,
-        } as VideoFormat & { isWidget?: boolean });
+                if (testResp.ok) {
+                    const data = await testResp.json() as { status?: string, url?: string };
+                    if ((data.status === 'redirect' || data.status === 'stream' || data.status === 'success' || data.url) && data.url) {
+                        workingInstance = instance;
+                        formats.push({ quality: '720p', format: 'mp4', url: data.url, size: 'HD', hasAudio: true, hasVideo: true, isAdaptive: false });
+                        break;
+                    }
+                }
+            } catch { /* skip and try next instance */ }
+        }
+
+        // If we found a working instance, fetch other qualities in parallel
+        if (workingInstance) {
+            const fetchQuality = async (q: string) => {
+                try {
+                    const resp = await fetch(`${workingInstance}/`, {
+                        method: 'POST',
+                        headers: { ...browserHeaders, 'Content-Type': 'application/json', Accept: 'application/json' },
+                        body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, videoQuality: q, filenamePattern: 'pretty' })
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json() as { status?: string, url?: string };
+                        if ((data.status === 'redirect' || data.status === 'stream' || data.status === 'success' || data.url) && data.url) {
+                            formats.push({ quality: `${q}p`, format: 'mp4', url: data.url, size: q === '1080' ? 'FHD' : 'HD', hasAudio: true, hasVideo: true, isAdaptive: false });
+                        }
+                    }
+                } catch { /* ignore */ }
+            };
+
+            // Audio fetch
+            const fetchAudio = async () => {
+                try {
+                    const resp = await fetch(`${workingInstance}/`, {
+                        method: 'POST',
+                        headers: { ...browserHeaders, 'Content-Type': 'application/json', Accept: 'application/json' },
+                        body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, isAudioOnly: true, filenamePattern: 'pretty' })
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json() as { status?: string, url?: string };
+                        if ((data.status === 'redirect' || data.status === 'stream' || data.status === 'success' || data.url) && data.url) {
+                            formats.push({ quality: 'MP3 Audio', format: 'mp3', url: data.url, size: 'Audio', hasAudio: true, hasVideo: false, isAdaptive: false });
+                        }
+                    }
+                } catch { /* ignore */ }
+            };
+
+            // Process all native extractions sequentially/parallel to prevent timeout failures
+            await Promise.all([
+                fetchQuality('1080'),
+                fetchQuality('480'),
+                fetchQuality('360'),
+                fetchAudio()
+            ]);
+        }
     }
 
     return {
