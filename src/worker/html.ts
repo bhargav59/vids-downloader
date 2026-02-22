@@ -224,6 +224,25 @@ function displayResults(video) {
 }
 
 function handleDownloadClick(btn, fmt) {
+  if (fmt.isWidget) {
+    // Show native widget iframe in a modal
+    var modalId = 'widgetModal_' + Date.now();
+    var modalHtml = '<div id="' + modalId + '" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(4px);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem">'
+      + '<div style="width:100%;max-width:600px;background:#1e1b4b;border-radius:12px;overflow:hidden;position:relative;border:1px solid rgba(255,255,255,0.1)">'
+      +   '<div style="display:flex;justify-content:space-between;padding:16px;border-bottom:1px solid rgba(255,255,255,0.1)">'
+      +     '<h3 style="margin:0;color:#fff;font-size:1.1rem">Native Download Proxy</h3>'
+      +     '<button onclick="document.getElementById(\'' + modalId + '\').remove()" style="background:transparent;border:none;color:#fff;cursor:pointer;font-size:1.5rem;line-height:1">&times;</button>'
+      +   '</div>'
+      +   '<iframe src="' + fmt.url + '" style="width:100%;height:100px;border:none;background:transparent" title="Download Proxy"></iframe>'
+      +   '<div style="padding:12px 16px;font-size:0.8rem;color:rgba(255,255,255,0.6);text-align:center;background:rgba(0,0,0,0.2)">'
+      +     'Click the button in the frame above to instantly save the file to your device.'
+      +   '</div>'
+      + '</div></div>';
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    return;
+  }
+
   if (fmt.isExternal) {
     window.open(fmt.url, '_blank', 'noopener noreferrer');
     return;
