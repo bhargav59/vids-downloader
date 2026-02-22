@@ -42,3 +42,8 @@ next-env.d.ts
 
 # yt-dlp temp files
 *-player-script.js
+
+# Wrangler & Cloudflare
+.wrangler/
+wrangler_log.txt*
+*.pdf
