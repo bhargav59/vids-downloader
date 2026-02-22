@@ -81,226 +81,215 @@ export async function extractYouTube(url: string): Promise<VideoInfo> {
         throw new Error('Video is unavailable or private. Please try a public video.');
     }
 
-    // --- Step 3: Download links via yt1s.is ---
+    // --- Step 3: Download links via YouTube Innertube ANDROID API (Primary) ---
+    // The ANDROID client returns direct googlevideo.com URLs without signature cipher.
+    // This is the same technique used by yt-dlp and NewPipe.
     const formats: VideoFormat[] = [];
 
     try {
-        // Attempt yt1s API for real download links
-        const analyzeResp = await fetch('https://yt1s.is/api/ajaxSearch/index', {
+        const innertubeResp = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
             method: 'POST',
             headers: {
-                ...browserHeaders,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                Origin: 'https://yt1s.is',
-                Referer: 'https://yt1s.is/',
+                'Content-Type': 'application/json',
+                'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
+                'Origin': 'https://www.youtube.com',
+                'Referer': 'https://www.youtube.com/',
             },
-            body: `q=https://www.youtube.com/watch?v=${videoId}&vt=home`,
+            body: JSON.stringify({
+                context: {
+                    client: {
+                        clientName: 'ANDROID',
+                        clientVersion: '19.09.37',
+                        androidSdkVersion: 30,
+                        hl: 'en',
+                        gl: 'US',
+                        utcOffsetMinutes: 0
+                    }
+                },
+                videoId,
+                playbackContext: { contentPlaybackContext: { html5Preference: 'HTML5_PREF_WANTS' } },
+                contentCheckOk: true,
+                racyCheckOk: true
+            })
         });
 
-        if (analyzeResp.ok) {
-            const analyzeData = await analyzeResp.json() as {
-                status?: string;
-                mess?: string;
-                page?: string;
-                vid?: string;
-                kc?: string;
-                links?: {
-                    mp4?: Record<string, { size: string; f: string; q: string; q_text: string; k: string }>;
-                    mp3?: Record<string, { size: string; f: string; q: string; q_text: string; k: string }>;
+        if (innertubeResp.ok) {
+            const innertubeData = await innertubeResp.json() as {
+                streamingData?: {
+                    formats?: Array<{
+                        url?: string;
+                        mimeType?: string;
+                        qualityLabel?: string;
+                        quality?: string;
+                        contentLength?: string;
+                        width?: number;
+                        height?: number;
+                        audioQuality?: string;
+                    }>;
+                    adaptiveFormats?: Array<{
+                        url?: string;
+                        mimeType?: string;
+                        qualityLabel?: string;
+                        quality?: string;
+                        contentLength?: string;
+                        width?: number;
+                        height?: number;
+                        audioQuality?: string;
+                    }>;
                 };
+                playabilityStatus?: { status?: string };
             };
 
-            if (analyzeData.status === 'ok' && analyzeData.links) {
-                // Build convert requests for each quality
-                const kc = analyzeData.kc || '';
-                const vid = analyzeData.vid || videoId;
-                const mp4Links = analyzeData.links.mp4 || {};
-                const mp3Links = analyzeData.links.mp3 || {};
+            const streamingData = innertubeData.streamingData;
+            if (streamingData) {
+                // Process muxed formats (video + audio combined)
+                const muxedFormats = streamingData.formats || [];
+                for (const f of muxedFormats) {
+                    if (!f.url || !f.mimeType) continue;
+                    const mime = f.mimeType.split(';')[0];
+                    if (!mime.startsWith('video/')) continue;
 
-                // Priority qualities
-                const wantedQualities = ['1080', '720', '480', '360'];
+                    const ext = mime === 'video/mp4' ? 'mp4' : 'webm';
+                    const sizeBytes = f.contentLength ? parseInt(f.contentLength) : 0;
+                    const sizeMB = sizeBytes > 0 ? `${(sizeBytes / 1024 / 1024).toFixed(1)} MB` : 'Unknown';
 
-                for (const q of wantedQualities) {
-                    const link = mp4Links[q];
-                    if (!link) continue;
+                    formats.push({
+                        quality: f.qualityLabel || f.quality || 'Unknown',
+                        format: ext,
+                        url: f.url,
+                        size: sizeMB,
+                        hasAudio: true,
+                        hasVideo: true,
+                        isAdaptive: false,
+                    });
+                }
 
-                    try {
-                        const convertResp = await fetch('https://yt1s.is/api/ajaxConvert/convert', {
-                            method: 'POST',
-                            headers: {
-                                ...browserHeaders,
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                                Origin: 'https://yt1s.is',
-                                Referer: 'https://yt1s.is/',
-                            },
-                            body: `vid=${vid}&k=${encodeURIComponent(link.k)}`,
+                // Process adaptive formats (video-only and audio-only)
+                const adaptiveFormats = streamingData.adaptiveFormats || [];
+                const seenQualities = new Set(formats.map(f => f.quality));
+
+                // Add higher-quality adaptive video formats not already in muxed
+                for (const f of adaptiveFormats) {
+                    if (!f.url || !f.mimeType) continue;
+                    const mime = f.mimeType.split(';')[0];
+
+                    if (mime.startsWith('video/') && mime === 'video/mp4') {
+                        const label = f.qualityLabel || f.quality || 'Unknown';
+                        if (seenQualities.has(label)) continue; // Skip duplicates
+                        seenQualities.add(label);
+
+                        const sizeBytes = f.contentLength ? parseInt(f.contentLength) : 0;
+                        const sizeMB = sizeBytes > 0 ? `${(sizeBytes / 1024 / 1024).toFixed(1)} MB` : 'Unknown';
+
+                        formats.push({
+                            quality: label,
+                            format: 'mp4',
+                            url: f.url,
+                            size: sizeMB,
+                            hasAudio: false, // Adaptive video is video-only
+                            hasVideo: true,
+                            isAdaptive: true,
                         });
-
-                        if (convertResp.ok) {
-                            const convertData = await convertResp.json() as { status?: string; dlink?: string };
-                            if (convertData.status === 'ok' && convertData.dlink) {
-                                formats.push({
-                                    quality: `${q}p`,
-                                    format: 'mp4',
-                                    url: convertData.dlink,
-                                    size: link.size || 'Unknown',
-                                    hasAudio: true,
-                                    hasVideo: true,
-                                    isAdaptive: false,
-                                });
-                            }
-                        }
-                    } catch {
-                        // Skip failed quality
                     }
                 }
 
-                // Add MP3
-                const mp3Link = mp3Links['128'] || mp3Links['192'] || Object.values(mp3Links)[0];
-                if (mp3Link) {
-                    try {
-                        const mp3Resp = await fetch('https://yt1s.is/api/ajaxConvert/convert', {
-                            method: 'POST',
-                            headers: {
-                                ...browserHeaders,
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                                Origin: 'https://yt1s.is',
-                                Referer: 'https://yt1s.is/',
-                            },
-                            body: `vid=${vid}&k=${encodeURIComponent(mp3Link.k)}`,
-                        });
-                        if (mp3Resp.ok) {
-                            const mp3Data = await mp3Resp.json() as { status?: string; dlink?: string };
-                            if (mp3Data.status === 'ok' && mp3Data.dlink) {
-                                formats.push({
-                                    quality: 'MP3 Audio',
-                                    format: 'mp3',
-                                    url: mp3Data.dlink,
-                                    size: mp3Link.size || 'Unknown',
-                                    hasAudio: true,
-                                    hasVideo: false,
-                                    isAdaptive: false,
-                                });
-                            }
-                        }
-                    } catch { /* skip */ }
+                // Add best audio format
+                const audioFormats = adaptiveFormats
+                    .filter(f => f.url && f.mimeType && f.mimeType.startsWith('audio/'))
+                    .sort((a, b) => parseInt(b.contentLength || '0') - parseInt(a.contentLength || '0'));
+
+                if (audioFormats.length > 0) {
+                    const best = audioFormats[0];
+                    const sizeBytes = best.contentLength ? parseInt(best.contentLength) : 0;
+                    const sizeMB = sizeBytes > 0 ? `${(sizeBytes / 1024 / 1024).toFixed(1)} MB` : 'Unknown';
+                    const ext = best.mimeType?.includes('mp4') ? 'mp3' : 'webm';
+
+                    formats.push({
+                        quality: 'Audio Only',
+                        format: ext,
+                        url: best.url!,
+                        size: sizeMB,
+                        hasAudio: true,
+                        hasVideo: false,
+                        isAdaptive: true,
+                    });
                 }
+
+                // Sort video formats by resolution (highest first)
+                formats.sort((a, b) => {
+                    if (a.hasVideo && !b.hasVideo) return -1;
+                    if (!a.hasVideo && b.hasVideo) return 1;
+                    const aRes = parseInt(a.quality) || 0;
+                    const bRes = parseInt(b.quality) || 0;
+                    return bRes - aRes;
+                });
             }
         }
     } catch {
-        // yt1s failed — fall through to cobalt fallback below
+        // Innertube API failed — fall through to yt1s fallback
     }
 
-    // --- Fallback: Community Cobalt Instances (Ad-Free Direct MP4s) ---
+    // --- Fallback: yt1s.is API (if Innertube returned nothing) ---
     if (formats.length === 0) {
-        const cobaltInstances = [
-            'https://co.wuk.sh',
-            'https://cobalt.owo.vc',
-            'https://cobalt.tux.pizza',
-            'https://cobalt1.kwiatekm.org',
-            'https://api.cobalt.tools',
-            'https://cobalt.cues.sg',
-            'https://cobalt.canine.ly'
-        ];
+        try {
+            const analyzeResp = await fetch('https://yt1s.is/api/ajaxSearch/index', {
+                method: 'POST',
+                headers: {
+                    ...browserHeaders,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    Origin: 'https://yt1s.is',
+                    Referer: 'https://yt1s.is/',
+                },
+                body: `q=https://www.youtube.com/watch?v=${videoId}&vt=home`,
+            });
 
-        // Find the first working instance (test with 720p)
-        let workingInstance = '';
-        for (const instance of cobaltInstances) {
-            try {
-                // v7 API spec requires root endpoint and videoQuality
-                const testResp = await fetch(`${instance}/`, {
-                    method: 'POST',
-                    headers: {
-                        ...browserHeaders,
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                    },
-                    body: JSON.stringify({
-                        url: `https://www.youtube.com/watch?v=${videoId}`,
-                        videoQuality: '720',
-                        filenamePattern: 'pretty'
-                    }),
-                });
+            if (analyzeResp.ok) {
+                const analyzeData = await analyzeResp.json() as {
+                    status?: string;
+                    vid?: string;
+                    kc?: string;
+                    links?: {
+                        mp4?: Record<string, { size: string; f: string; q: string; k: string }>;
+                        mp3?: Record<string, { size: string; f: string; q: string; k: string }>;
+                    };
+                };
 
-                if (testResp.ok) {
-                    const data = await testResp.json() as { status?: string, url?: string };
-                    if ((data.status === 'redirect' || data.status === 'stream' || data.status === 'success' || data.url) && data.url) {
-                        workingInstance = instance;
-                        formats.push({ quality: '720p', format: 'mp4', url: data.url, size: 'HD', hasAudio: true, hasVideo: true, isAdaptive: false });
-                        break;
+                if (analyzeData.status === 'ok' && analyzeData.links) {
+                    const vid = analyzeData.vid || videoId;
+                    const mp4Links = analyzeData.links.mp4 || {};
+                    const wantedQualities = ['1080', '720', '480', '360'];
+
+                    for (const q of wantedQualities) {
+                        const link = mp4Links[q];
+                        if (!link) continue;
+                        try {
+                            const convertResp = await fetch('https://yt1s.is/api/ajaxConvert/convert', {
+                                method: 'POST',
+                                headers: { ...browserHeaders, 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://yt1s.is', Referer: 'https://yt1s.is/' },
+                                body: `vid=${vid}&k=${encodeURIComponent(link.k)}`,
+                            });
+                            if (convertResp.ok) {
+                                const convertData = await convertResp.json() as { status?: string; dlink?: string };
+                                if (convertData.status === 'ok' && convertData.dlink) {
+                                    formats.push({ quality: `${q}p`, format: 'mp4', url: convertData.dlink, size: link.size || 'Unknown', hasAudio: true, hasVideo: true, isAdaptive: false });
+                                }
+                            }
+                        } catch { /* skip */ }
                     }
                 }
-            } catch { /* skip and try next instance */ }
-        }
-
-        // If we found a working instance, fetch other qualities in parallel
-        if (workingInstance) {
-            const fetchQuality = async (q: string) => {
-                try {
-                    const resp = await fetch(`${workingInstance}/`, {
-                        method: 'POST',
-                        headers: { ...browserHeaders, 'Content-Type': 'application/json', Accept: 'application/json' },
-                        body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, videoQuality: q, filenamePattern: 'pretty' })
-                    });
-                    if (resp.ok) {
-                        const data = await resp.json() as { status?: string, url?: string };
-                        if ((data.status === 'redirect' || data.status === 'stream' || data.status === 'success' || data.url) && data.url) {
-                            formats.push({ quality: `${q}p`, format: 'mp4', url: data.url, size: q === '1080' ? 'FHD' : 'HD', hasAudio: true, hasVideo: true, isAdaptive: false });
-                        }
-                    }
-                } catch { /* ignore */ }
-            };
-
-            // Audio fetch
-            const fetchAudio = async () => {
-                try {
-                    const resp = await fetch(`${workingInstance}/`, {
-                        method: 'POST',
-                        headers: { ...browserHeaders, 'Content-Type': 'application/json', Accept: 'application/json' },
-                        body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, isAudioOnly: true, filenamePattern: 'pretty' })
-                    });
-                    if (resp.ok) {
-                        const data = await resp.json() as { status?: string, url?: string };
-                        if ((data.status === 'redirect' || data.status === 'stream' || data.status === 'success' || data.url) && data.url) {
-                            formats.push({ quality: 'MP3 Audio', format: 'mp3', url: data.url, size: 'Audio', hasAudio: true, hasVideo: false, isAdaptive: false });
-                        }
-                    }
-                } catch { /* ignore */ }
-            };
-
-            // Process all native extractions sequentially/parallel to prevent timeout failures
-            await Promise.all([
-                fetchQuality('1080'),
-                fetchQuality('480'),
-                fetchQuality('360'),
-                fetchAudio()
-            ]);
-        }
+            }
+        } catch { /* yt1s also failed */ }
     }
 
     // --- Ultimate Fail-Safe: Clean External Redirect (No Ads) ---
-    // If the Cloudflare Worker Datacenter IP or local user DNS completely blocks the internal proxy fetches,
-    // we provide a clean, ad-free link directly to the open-source cobalt.tools frontend instead of failing
-    // or using malicious iframe proxies like loader.to.
     if (formats.length === 0) {
         formats.push({
-            quality: 'Download HD via Cobalt (Ad-Free Secure Bypass)',
+            quality: 'Download via External Tool',
             format: 'mp4',
             url: `https://cobalt.tools/?u=https://www.youtube.com/watch?v=${videoId}`,
             size: 'HD',
             hasAudio: true,
             hasVideo: true,
-            isAdaptive: false,
-            isExternal: true, // Frontend will open this cleanly in a new tab without iframes
-        });
-
-        formats.push({
-            quality: 'Download MP3 Audio (Ad-Free Secure Bypass)',
-            format: 'mp3',
-            url: `https://cobalt.tools/?u=https://www.youtube.com/watch?v=${videoId}`,
-            size: 'Audio',
-            hasAudio: true,
-            hasVideo: false,
             isAdaptive: false,
             isExternal: true,
         });
@@ -310,7 +299,7 @@ export async function extractYouTube(url: string): Promise<VideoInfo> {
         platform: 'YouTube',
         title: meta.title || 'YouTube Video',
         thumbnail: meta.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-        duration: '0:00', // oEmbed/noembed doesn't provide duration
+        duration: '0:00',
         author: meta.author_name || 'Unknown',
         formats,
         originalUrl: `https://www.youtube.com/watch?v=${videoId}`,
