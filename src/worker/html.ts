@@ -231,7 +231,7 @@ function handleDownloadClick(btn, fmt) {
       + '<div style="width:100%;max-width:600px;background:#1e1b4b;border-radius:12px;overflow:hidden;position:relative;border:1px solid rgba(255,255,255,0.1)">'
       +   '<div style="display:flex;justify-content:space-between;padding:16px;border-bottom:1px solid rgba(255,255,255,0.1)">'
       +     '<h3 style="margin:0;color:#fff;font-size:1.1rem">Native Download Proxy</h3>'
-      +     '<button onclick="document.getElementById(\'' + modalId + '\').remove()" style="background:transparent;border:none;color:#fff;cursor:pointer;font-size:1.5rem;line-height:1">&times;</button>'
+      +     '<button onclick="document.getElementById(\\'' + modalId + '\\').remove()" style="background:transparent;border:none;color:#fff;cursor:pointer;font-size:1.5rem;line-height:1">&times;</button>'
       +   '</div>'
       +   '<iframe src="' + fmt.url + '" style="width:100%;height:100px;border:none;background:transparent" title="Download Proxy"></iframe>'
       +   '<div style="padding:12px 16px;font-size:0.8rem;color:rgba(255,255,255,0.6);text-align:center;background:rgba(0,0,0,0.2)">'
