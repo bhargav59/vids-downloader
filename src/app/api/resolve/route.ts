@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { extractVideoInfo } from '@/lib/extractors';
 
-export async function POST(request: NextRequest) {
+export const runtime = 'edge';
+
+export async function GET(request: NextRequest) {
     try {
-        const body = await request.json();
-        const { url } = body;
+        const { searchParams } = new URL(request.url);
+        const url = searchParams.get('url');
 
         if (!url) {
             return NextResponse.json({ error: 'URL is required' }, { status: 400 });
